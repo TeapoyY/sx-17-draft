@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0a0e14">
 <title>🏟 17-0: AMA Supercross Draft — Can You Sweep The Season?</title>
 <meta name="description" content="Draft legendary AMA Supercross champions across the eras and try to win every race in a 17-round stadium SX season. 84 legends. 6 eras. 17 rounds. 1 goal: 17-0.">
@@ -142,6 +142,9 @@
     gap: 8px;
   }
   .driver-card {
+    color: inherit;
+    font: inherit;
+    text-align: left;
     background: var(--panel2);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -259,6 +262,7 @@
     gap: 8px;
     margin-top: 12px;
   }
+  .btn-row[hidden] { display: none; }
   .btn-row .btn { flex: 1; }
   .race-log {
     max-height: 400px;
@@ -439,6 +443,8 @@
     padding: 4px;
   }
   .roster-chip {
+    border: 0;
+    font-family: inherit;
     background: var(--accent);
     color: #000;
     padding: 4px 10px;
@@ -739,9 +745,9 @@ function eraSynergy(drafted) {
 
 // --- SIMULATE A SINGLE RACE ---
 function simulateRace(playerOVR, raceType, rng) {
-    // Generate AI field of 35 other cars with realistic OVR distribution
+    // Generate AI field of 21 other riders with realistic OVR distribution
     const field = [];
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 21; i++) {
         // AI drivers weighted around OVR 84-93 (strong AMA SX field, all-road circuits favor elite teams)
         const aiOVR = 84 + Math.floor(rng() * 10);
         field.push({ name: `AI #${i+2}`, ovr: aiOVR, type: raceType });
@@ -777,13 +783,10 @@ function simulateRace(playerOVR, raceType, rng) {
     return { playerPos, field };
 }
 
-// --- POINTS CALCULATION (Modern AMA SX: 25-1 system, top 15 score) ---
+// --- POINTS CALCULATION (Modern AMA SX: top 21 score) ---
 function pointsForPos(pos, raceIdx) {
-    // Modern AMA SX: 25-1 system, top 15 score (since 2023)
-    // P1=25, P2=20, P3=16, P4=13, P5=11, P6=10, P7=9, P8=8, P9=7, P10=6
-    // P11=5, P12=4, P13=3, P14=2, P15=1, P16+ = 0
     // No double points at any race
-    const POINTS = [25, 20, 16, 13, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+    const POINTS = [25, 22, 20, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
     return POINTS[pos - 1] || 0;
 }
 
@@ -824,7 +827,9 @@ function renderDrivers() {
     const drivers = DRIVERS.filter(d => d.era === state.selectedEra);
     drivers.forEach(d => {
         const drafted = state.drafted.some(x => x.id === d.id);
-        const card = document.createElement('div');
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.disabled = drafted || state.drafted.length >= 5;
         card.className = 'driver-card' + (drafted ? ' drafted' : '');
         card.innerHTML = `
             <div class="ovr">${d.ovr}</div>
@@ -881,14 +886,15 @@ function updateDraftUI() {
     }
 
     // Show chips
-    const existingChips = status.querySelectorAll('.roster-chip');
-    existingChips.forEach(c => c.remove());
+    status.querySelectorAll('.roster').forEach(roster => roster.remove());
     if (n > 0) {
         const rosterDiv = document.createElement('div');
         rosterDiv.className = 'roster';
         rosterDiv.style.marginTop = '10px';
         state.drafted.forEach(d => {
-            const chip = document.createElement('span');
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.setAttribute('aria-label', `Remove ${d.name}`);
             chip.className = 'roster-chip';
             chip.textContent = `${d.name} ${d.ovr}`;
             chip.onclick = () => undraftDriver(d.id);
@@ -927,6 +933,9 @@ $('start-btn').onclick = () => {
     state.season.standings[state.season.primaryDriver.id] = 0;
     state.drafted.forEach(d => state.season.standings[d.id] = 0);
 
+    $('season-wins').textContent = '0';
+    $('season-streak').textContent = '0';
+    $('season-points').textContent = '0';
     switchScreen('season');
     $('race-counter').textContent = '1';
     $('race-counter-end') && ($('race-counter-end').textContent = '1');
@@ -952,9 +961,9 @@ function showNextRace() {
 $('race-btn').onclick = () => {
     const i = state.season.results.length;
     const race = SCHEDULE[i];
-    // Player uses best drafted driver as primary; pool of 6 allows occasional rotation
-    // For simplicity: use primary driver for entire season
-    const playerOVR = state.season.primaryDriver.ovr + eraSynergy(state.season.allDrafted);
+    // Use the same roster strength displayed during the draft.
+    const drafted = state.season.allDrafted;
+    const playerOVR = drafted.reduce((sum, d) => sum + d.ovr, 0) / drafted.length + eraSynergy(drafted);
     const result = simulateRace(playerOVR, race.type, state.rng);
     const pts = pointsForPos(result.playerPos, i);
     const win = result.playerPos === 1;
@@ -1045,7 +1054,7 @@ function showFinale() {
     // Title
     let title = '';
     if (wins === 17) title = '🏆 UNDEFEATED — 17-0 LEGEND!';
-    else if (wins >= 18) title = `🏆 ELITE — ${wins} wins / 17`;
+    else if (wins >= totalRaces - 1) title = `🏆 ELITE — ${wins} wins / ${totalRaces}`;
     else if (wins >= 15) title = `🏟 STRONG — ${wins} wins / 17`;
     else if (wins >= 10) title = `🏟 CHAMPIONSHIP BID — ${wins} wins / 17`;
     else title = `${wins} wins / 17 — Try a stronger roster next time`;
